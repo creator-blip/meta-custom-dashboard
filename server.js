@@ -1,17 +1,17 @@
 const express = require("express");
-const path = require("path");
-
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// serve static files
-app.use(express.static("public"));
+app.use(express.json());
 
-// endpoint
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+let latestMetaData = [];
+
+app.post("/api/meta", (req, res) => {
+  latestMetaData = req.body;     // store latest pushed data
+  res.json({ ok: true });
 });
 
-app.listen(PORT, () => {
-  console.log(`Dashboard running on port ${PORT}`);
+app.get("/api/meta", (req, res) => {
+  res.json(latestMetaData);      // frontend fetches this
 });
+
+app.listen(process.env.PORT || 3000);
