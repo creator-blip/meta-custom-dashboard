@@ -30,14 +30,15 @@
 
 <table id="adsTable">
   <thead>
-    <tr>
-      <th>Campaign</th>
-      <th>Impressions</th>
-      <th>Clicks</th>
-      <th>Spend</th>
-      <th>CTR (%)</th>
-    </tr>
-  </thead>
+  <tr>
+    <th>Ad Name</th>
+    <th>Impressions</th>
+    <th>Clicks</th>
+    <th>Spend</th>
+    <th>CTR</th>
+    <th>CPC</th>
+  </tr>
+</thead>
   <tbody></tbody>
 </table>
 
@@ -48,20 +49,23 @@
       const tbody = document.querySelector("#adsTable tbody");
       tbody.innerHTML = "";
 
-      if (!data || data.length === 0) {
-        tbody.innerHTML = "<tr><td colspan='5'>No data yet</td></tr>";
+      if (!Array.isArray(data) || data.length === 0) {
+        tbody.innerHTML = "<tr><td colspan='6'>No data yet</td></tr>";
         return;
       }
 
       data.forEach(row => {
         const tr = document.createElement("tr");
+
         tr.innerHTML = `
-          <td>${row.campaign_name}</td>
-          <td>${row.impressions}</td>
-          <td>${row.clicks}</td>
-          <td>₹${row.spend}</td>
-          <td>${row.ctr}%</td>
+          <td>${row.ad_name}</td>
+          <td>${row.total_impressions.toLocaleString()}</td>
+          <td>${row.total_clicks}</td>
+          <td>₹${row.total_spend.toFixed(2)}</td>
+          <td>${(row.ctr * 100).toFixed(2)}%</td>
+          <td>₹${row.cpc.toFixed(2)}</td>
         `;
+
         tbody.appendChild(tr);
       });
     })
@@ -69,6 +73,7 @@
       console.error("Error loading data", err);
     });
 </script>
+
 
 </body>
 </html>
