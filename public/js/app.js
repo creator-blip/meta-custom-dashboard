@@ -32,7 +32,7 @@ async function fetchData() {
 
     try {
         // Fetch data from the API
-        const response = await fetch('/api/meta');
+        const response = await fetch('/api/ads');
         const json = await response.json();
 
         // If the data is wrapped in an object (meta_data), we extract it
@@ -87,7 +87,7 @@ function renderTable(data) {
 
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td><span class="status-dot ${statusColor}"></span>${statusText}</td>
+            
             <td>${escapeHtml(ad.ad_name)}</td>
             <td class="text-right">₹${ad.total_spend.toLocaleString()}</td>
             <td class="text-right">${ad.total_impressions.toLocaleString()}</td>
