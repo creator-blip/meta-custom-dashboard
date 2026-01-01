@@ -1,39 +1,15 @@
 // ==========================================
 // GLOBAL STATE
 // ==========================================
-let rawAdsData = [
-    {
-        ad_name: "Video 1 - Copy",
-        total_spend: 1512.73,
-        total_impressions: 30390,
-        clicks: 200,
-        total_leads: 4,
-        cost_per_lead: 378.18,
-        roas: 2.0,
-        ad_id: "1202372020926880115",
-        campaign_name: "Campaign 1"
-    },
-    {
-        ad_name: "Poster 1 - Copy",
-        total_spend: 160.41,
-        total_impressions: 869,
-        clicks: 7,
-        total_leads: 0,
-        cost_per_lead: 0,
-        roas: 0,
-        ad_id: "120237202928480115",
-        campaign_name: "Campaign 2"
-    },
-    // Add more sample data here
-];
-let filteredData = [...rawAdsData];
+let rawAdsData = [];
+let filteredData = [];
 let currentSort = { field: null, direction: 'asc' };
 
 // ==========================================
 // INITIALIZATION
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-    renderTable(filteredData);
+    fetchData();  // Fetch data when the page loads
     setupEventListeners();
 });
 
@@ -47,7 +23,51 @@ function setupEventListeners() {
 }
 
 // ==========================================
-// 2. TABLE RENDERING & FILTERING
+// 1. DATA FETCHING
+// ==========================================
+async function fetchData() {
+    const loader = document.getElementById('loadingOverlay');
+    loader.style.display = 'block';  // Show loading overlay while fetching data
+    document.getElementById('lastUpdated').innerHTML = '<i class="fas fa-clock"></i> Syncing data...';
+
+    try {
+        // Fetch data from the API
+        const response = await fetch('/api/ads');
+        const json = await response.json();
+
+        // If the data is wrapped in an object (meta_data), we extract it
+        if (json.meta_data) {
+            rawAdsData = json.meta_data;
+        } else {
+            rawAdsData = json;  // Use the data as-is if it's not wrapped in a 'meta_data' object
+        }
+
+        if (rawAdsData.length === 0) {
+            showToast("No data found.", "warning");
+            return;
+        }
+
+        filteredData = [...rawAdsData];
+        updateDashboard(filteredData);
+    } catch (error) {
+        console.error("Fetch error:", error);
+        showToast("Failed to connect to Dashboard Server", "error");
+    } finally {
+        loader.style.display = 'none';  // Hide loading overlay after fetching data
+    }
+}
+
+// ==========================================
+// 2. DASHBOARD UPDATE
+// ==========================================
+function updateDashboard(data) {
+    if (!data || data.length === 0) return;
+
+    renderTable(data);
+}
+
+// ==========================================
+// 3. TABLE RENDERING & FILTERING
 // ==========================================
 function renderTable(data) {
     const tbody = document.getElementById('adsTableBody');
