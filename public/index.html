@@ -1,44 +1,66 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meta Ads Performance Dashboard</title>
-
-    <link rel="stylesheet" href="css/style.css">
+  <title>Meta Ads Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f4f6f8;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+    }
+    th, td {
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+    }
+    th {
+      background: #4374B8;
+      color: #fff;
+    }
+  </style>
 </head>
-
 <body>
-    <div id="loadingOverlay" style="display: none;">
-        <div class="spinner"></div>
-        <p>Loading...</p>
-    </div>
 
-    <div class="container">
-        <h1>Meta Ads Performance Dashboard</h1>
+<h2>Meta Ads Performance</h2>
 
-        <div class="table-responsive">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Ad Name</th>
-                        <th>Spend (₹)</th>
-                        <th>Impressions</th>
-                        <th>Clicks</th>
-                        <th>Leads</th>
-                        <th>CPL (₹)</th>
-                        <th>ROAS</th>
-                    </tr>
-                </thead>
-                <tbody id="adsTableBody">
-                    <!-- Data Rows will be injected here -->
-                </tbody>
-            </table>
-        </div>
-    </div>
+<table id="adsTable">
+  <thead>
+    <tr>
+      <th>Campaign</th>
+      <th>Impressions</th>
+      <th>Clicks</th>
+      <th>Spend</th>
+      <th>CTR (%)</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
-    <script src="js/app.js"></script>
+<script>
+  fetch("https://meta-custom-dashboard-production.up.railway.app/api/ads")
+    .then(res => res.json())
+    .then(data => {
+      const tbody = document.querySelector("#adsTable tbody");
+
+      data.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${row.campaign_name}</td>
+          <td>${row.impressions}</td>
+          <td>${row.clicks}</td>
+          <td>₹${row.spend}</td>
+          <td>${row.ctr}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    })
+    .catch(err => console.error("Error loading data", err));
+</script>
+
 </body>
-
 </html>
