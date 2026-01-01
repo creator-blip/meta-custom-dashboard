@@ -38,24 +38,45 @@ async function fetchData() {
 
     try {
         const response = await fetch('/api/ads');
+        
+        // Check if response is ok
+        if (!response.ok) {
+            // Try to get error details from response
+            let errorData = {};
+            try {
+                errorData = await response.json();
+            } catch (e) {
+                // If response is not JSON, create error from status
+                errorData = {
+                    error: `Server returned ${response.status}: ${response.statusText}`,
+                    details: "Unable to parse error response"
+                };
+            }
+            
+            const error = new Error(errorData.error || `Server returned ${response.status}: ${response.statusText}`);
+            error.errorData = errorData;
+            throw error;
+        }
+        
         const json = await response.json();
         
         // Handle n8n response structure
         if (Array.isArray(json)) {
             rawAdsData = json.map(item => {
                 // Handle n8n's nested structure
-                if (item.json) {
+                if (item && item.json) {
                     return item.json;
                 }
                 return item;
-            });
+            }).filter(item => item != null); // Filter out null/undefined items
         } else if (json.data && Array.isArray(json.data)) {
-            rawAdsData = json.data;
+            rawAdsData = json.data.filter(item => item != null); // Filter out null/undefined items
         } else if (json.json && Array.isArray(json.json)) {
-            rawAdsData = json.json;
+            rawAdsData = json.json.filter(item => item != null); // Filter out null/undefined items
         } else {
             // Single object or wrapped
-            rawAdsData = [json.json || json];
+            const singleItem = json.json || json;
+            rawAdsData = singleItem != null ? [singleItem] : [];
         }
 
         // Debug: Log available fields from first item
@@ -74,8 +95,8 @@ async function fetchData() {
             return defaultValue;
         };
 
-        // Clean and normalize data
-        rawAdsData = rawAdsData.map(ad => {
+        // Clean and normalize data - filter out null/undefined items first
+        rawAdsData = rawAdsData.filter(ad => ad != null).map(ad => {
             // Try multiple field name variations for leads
             const leads = getFieldValue(ad, [
                 'total_leads', 'leads', 'Leads', 'Total Leads', 
@@ -105,13 +126,16 @@ async function fetchData() {
                 'cost_per_conversion'
             ], (leads > 0 ? spend / leads : 0), 'number');
             
+            // Ensure cost_per_lead is always a valid number
+            const safeCpl = (cpl != null && !isNaN(cpl) && isFinite(cpl)) ? cpl : (leads > 0 ? spend / leads : 0);
+            
             return {
                 ...ad,
-                total_spend: spend,
-                total_leads: Math.round(leads), // Ensure it's an integer
-                total_impressions: Math.round(impressions),
-                clicks: Math.round(clicks),
-                cost_per_lead: cpl,
+                total_spend: spend || 0,
+                total_leads: Math.round(leads) || 0, // Ensure it's an integer
+                total_impressions: Math.round(impressions) || 0,
+                clicks: Math.round(clicks) || 0,
+                cost_per_lead: safeCpl,
                 roas: parseFloat(ad.roas || ad.ROAS || ad.roi || 0),
                 ad_name: ad.ad_name || ad['Ad Name'] || ad.adName || 'Unnamed Ad',
                 campaign_name: ad.campaign_name || ad['Campaign Name'] || ad.campaignName || 'Unnamed Campaign',
@@ -156,9 +180,47 @@ async function fetchData() {
 
     } catch (error) {
         console.error("Fetch error:", error);
-        showToast("Failed to connect to Dashboard Server", "error");
+        
+        let errorMessage = "Failed to connect to Dashboard Server";
+        let errorDetails = "";
+        
+        // Check if error has response (from our server)
+        if (error.message) {
+            // Check if it's a server error response
+            if (error.message.includes('Server returned')) {
+                errorMessage = error.message;
+            } else if (error.message.includes('fetch')) {
+                errorMessage = "Cannot connect to server";
+                errorDetails = "Please make sure the dashboard server is running on port 3000.";
+            } else {
+                errorDetails = error.message;
+            }
+        }
+        
+        // If error was thrown with error data, extract it
+        if (error.errorData) {
+            const errorData = error.errorData;
+            errorMessage = errorData.error || errorMessage;
+            errorDetails = errorData.details || errorData.message || errorDetails;
+            
+            // Provide user-friendly messages based on error type
+            if (errorData.code === 'ECONNREFUSED') {
+                errorMessage = "Cannot connect to n8n webhook";
+                errorDetails = "The n8n server appears to be unreachable. Please check the server configuration.";
+            } else if (errorData.code === 'ETIMEDOUT' || errorData.code === 'ECONNABORTED') {
+                errorMessage = "Request timed out";
+                errorDetails = "The n8n webhook did not respond in time. Please try again.";
+            } else if (errorData.code === 'ENOTFOUND') {
+                errorMessage = "Invalid webhook URL";
+                errorDetails = "Could not resolve the n8n webhook hostname. Please check the URL configuration.";
+            }
+        }
+        
+        console.error("Error details:", errorMessage, errorDetails);
+        const fullErrorMessage = errorMessage + (errorDetails ? ": " + errorDetails : "");
+        showToast(fullErrorMessage, "error");
         document.getElementById('lastUpdated').innerHTML = 
-            `<i class="fas fa-exclamation-circle" style="color: var(--danger);"></i> Connection failed`;
+            `<i class="fas fa-exclamation-circle" style="color: var(--danger);"></i> ${errorMessage}`;
     } finally {
         loader.style.display = 'none';
     }
@@ -200,7 +262,7 @@ function calculateMetrics(data) {
     let totalROAS = 0;
     let activeAds = 0;
 
-    data.forEach(ad => {
+    data.filter(ad => ad != null).forEach(ad => {
         totalSpend += ad.total_spend || 0;
         totalLeads += ad.total_leads || 0;
         totalImpressions += ad.total_impressions || 0;
@@ -283,9 +345,9 @@ function renderMainTrendChart(data) {
     if (!ctx) return;
 
     const sortBy = document.getElementById('chartSort')?.value || 'spend';
-    let sorted = [...data].sort((a, b) => {
-        if (sortBy === 'spend') return b.total_spend - a.total_spend;
-        if (sortBy === 'leads') return b.total_leads - a.total_leads;
+    let sorted = [...data].filter(ad => ad != null).sort((a, b) => {
+        if (sortBy === 'spend') return (b.total_spend || 0) - (a.total_spend || 0);
+        if (sortBy === 'leads') return (b.total_leads || 0) - (a.total_leads || 0);
         if (sortBy === 'cpl') return (a.cost_per_lead || 0) - (b.cost_per_lead || 0);
         return 0;
     }).slice(0, 10);
@@ -380,13 +442,13 @@ function renderPieChart(data) {
     if (!ctx) return;
 
     const campaignStats = {};
-    data.forEach(ad => {
+    data.filter(ad => ad != null).forEach(ad => {
         const camp = ad.campaign_name || 'Unknown';
         if (!campaignStats[camp]) {
             campaignStats[camp] = { spend: 0, leads: 0 };
         }
-        campaignStats[camp].spend += ad.total_spend;
-        campaignStats[camp].leads += ad.total_leads;
+        campaignStats[camp].spend += ad.total_spend || 0;
+        campaignStats[camp].leads += ad.total_leads || 0;
     });
 
     const labels = Object.keys(campaignStats);
@@ -448,15 +510,15 @@ function renderPerformanceChart(data) {
 
     // Group by campaign and calculate average CPL
     const campaignPerf = {};
-    data.forEach(ad => {
+    data.filter(ad => ad != null).forEach(ad => {
         const camp = ad.campaign_name || 'Unknown';
         if (!campaignPerf[camp]) {
             campaignPerf[camp] = { cpl: [], leads: [] };
         }
-        if (ad.cost_per_lead > 0) {
+        if (ad.cost_per_lead != null && ad.cost_per_lead > 0) {
             campaignPerf[camp].cpl.push(ad.cost_per_lead);
         }
-        campaignPerf[camp].leads.push(ad.total_leads);
+        campaignPerf[camp].leads.push(ad.total_leads || 0);
     });
 
     const labels = Object.keys(campaignPerf);
@@ -534,14 +596,14 @@ function renderROIChart(data) {
 
     // Calculate ROI for each campaign
     const campaignROI = {};
-    data.forEach(ad => {
+    data.filter(ad => ad != null).forEach(ad => {
         const camp = ad.campaign_name || 'Unknown';
         if (!campaignROI[camp]) {
             campaignROI[camp] = { spend: 0, revenue: 0 };
         }
-        campaignROI[camp].spend += ad.total_spend;
+        campaignROI[camp].spend += ad.total_spend || 0;
         // Estimate revenue from ROAS (if available) or assume ₹5000 per lead (INR)
-        const revenuePerLead = ad.roas > 0 ? (ad.total_spend * ad.roas) / (ad.total_leads || 1) : 5000;
+        const revenuePerLead = ad.roas > 0 ? ((ad.total_spend || 0) * ad.roas) / (ad.total_leads || 1) : 5000;
         campaignROI[camp].revenue += (ad.total_leads || 0) * revenuePerLead;
     });
 
@@ -621,7 +683,7 @@ function renderCampaignComparison(data) {
     if (!container) return;
 
     const campaignStats = {};
-    data.forEach(ad => {
+    data.filter(ad => ad != null).forEach(ad => {
         const camp = ad.campaign_name || 'Unknown';
         if (!campaignStats[camp]) {
             campaignStats[camp] = {
@@ -633,11 +695,11 @@ function renderCampaignComparison(data) {
                 avgROAS: 0
             };
         }
-        campaignStats[camp].spend += ad.total_spend;
-        campaignStats[camp].leads += ad.total_leads;
-        campaignStats[camp].impressions += ad.total_impressions;
+        campaignStats[camp].spend += ad.total_spend || 0;
+        campaignStats[camp].leads += ad.total_leads || 0;
+        campaignStats[camp].impressions += ad.total_impressions || 0;
         campaignStats[camp].ads += 1;
-        campaignStats[camp].avgROAS += ad.roas;
+        campaignStats[camp].avgROAS += ad.roas || 0;
     });
 
     // Calculate averages
@@ -670,11 +732,11 @@ function renderCampaignComparison(data) {
                     <div class="stat-label">Leads</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">₹${stats.avgCPL.toFixed(0)}</div>
+                    <div class="stat-value">₹${(stats.avgCPL || 0).toFixed(0)}</div>
                     <div class="stat-label">Avg CPL</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">${stats.avgROAS.toFixed(1)}x</div>
+                    <div class="stat-value">${(stats.avgROAS || 0).toFixed(1)}x</div>
                     <div class="stat-label">ROAS</div>
                 </div>
             </div>
@@ -696,7 +758,7 @@ function renderTable(data) {
         return;
     }
 
-    data.forEach(ad => {
+    data.filter(ad => ad != null).forEach(ad => {
         const perf = (ad.performance_category || '').toLowerCase();
         const isGood = perf.includes('yes') || perf.includes('good') || perf.includes('performing');
         const isBad = perf.includes('wasted') || perf.includes('bad') || perf.includes('no') || perf.includes('poor');
@@ -711,7 +773,7 @@ function renderTable(data) {
             statusText = 'Needs Optimization';
         }
 
-        const ctr = ad.total_impressions > 0 ? ((ad.clicks / ad.total_impressions) * 100).toFixed(2) : '0.00';
+        const ctr = (ad.total_impressions || 0) > 0 ? (((ad.clicks || 0) / (ad.total_impressions || 1)) * 100).toFixed(2) : '0.00';
 
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -727,8 +789,8 @@ function renderTable(data) {
             <td class="text-right">${ad.total_impressions.toLocaleString()}</td>
             <td class="text-right">${ad.clicks.toLocaleString()}</td>
             <td class="text-right"><strong>${ad.total_leads}</strong></td>
-            <td class="text-right">₹${ad.cost_per_lead.toFixed(2)}</td>
-            <td class="text-right">${ad.roas.toFixed(2)}x</td>
+            <td class="text-right">₹${(ad.cost_per_lead || 0).toFixed(2)}</td>
+            <td class="text-right">${(ad.roas || 0).toFixed(2)}x</td>
             <td class="text-center">
                 <button class="action-btn" onclick="showDetails('${ad.ad_id}')">
                     <i class="fas fa-eye"></i> View
@@ -744,9 +806,10 @@ function filterTable() {
     const statusFilter = document.getElementById('statusFilter')?.value || 'all';
 
     filteredData = rawAdsData.filter(ad => {
+        if (!ad) return false;
         const matchesSearch = 
             (ad.ad_name || '').toLowerCase().includes(searchTerm) ||
-            (ad.campaign_name || '').toLowerCase().includes(searchTerm);
+            (ad.campaign_name && ad.campaign_name.toLowerCase().includes(searchTerm));
         
         const perf = (ad.performance_category || '').toLowerCase();
         const isGood = perf.includes('yes') || perf.includes('good') || perf.includes('performing');
@@ -780,17 +843,17 @@ function sortTable(field) {
         currentSort.direction = 'asc';
     }
 
-    filteredData.sort((a, b) => {
+    filteredData = filteredData.filter(ad => ad != null).sort((a, b) => {
         let aVal, bVal;
         
         switch(field) {
             case 'spend':
-                aVal = a.total_spend;
-                bVal = b.total_spend;
+                aVal = a.total_spend || 0;
+                bVal = b.total_spend || 0;
                 break;
             case 'leads':
-                aVal = a.total_leads;
-                bVal = b.total_leads;
+                aVal = a.total_leads || 0;
+                bVal = b.total_leads || 0;
                 break;
             case 'cpl':
                 aVal = a.cost_per_lead || 0;
@@ -801,12 +864,12 @@ function sortTable(field) {
                 bVal = b.roas || 0;
                 break;
             case 'impressions':
-                aVal = a.total_impressions;
-                bVal = b.total_impressions;
+                aVal = a.total_impressions || 0;
+                bVal = b.total_impressions || 0;
                 break;
             case 'clicks':
-                aVal = a.clicks;
-                bVal = b.clicks;
+                aVal = a.clicks || 0;
+                bVal = b.clicks || 0;
                 break;
             case 'ad_name':
                 aVal = (a.ad_name || '').toLowerCase();
@@ -837,9 +900,9 @@ function filterByCampaign() {
     const campaign = document.getElementById('campaignFilter')?.value || 'all';
     
     if (campaign === 'all') {
-        filteredData = [...rawAdsData];
+        filteredData = rawAdsData.filter(ad => ad != null);
     } else {
-        filteredData = rawAdsData.filter(ad => ad.campaign_name === campaign);
+        filteredData = rawAdsData.filter(ad => ad != null && ad.campaign_name === campaign);
     }
 
     renderTable(filteredData);
@@ -851,7 +914,7 @@ function updateCampaignFilter(data) {
     const select = document.getElementById('campaignFilter');
     if (!select) return;
 
-    const campaigns = [...new Set(data.map(ad => ad.campaign_name).filter(Boolean))];
+    const campaigns = [...new Set(data.filter(ad => ad != null).map(ad => ad.campaign_name).filter(Boolean))];
     const currentValue = select.value;
 
     select.innerHTML = '<option value="all">All Campaigns</option>' +
@@ -878,61 +941,68 @@ function renderInsights(data, metrics) {
     const insights = [];
 
     // Top performer
-    const topPerformer = data.reduce((prev, curr) => 
-        (curr.total_leads > prev.total_leads) ? curr : prev, data[0]);
+    const validData = data.filter(ad => ad != null);
+    if (validData.length === 0) return;
+    
+    const topPerformer = validData.reduce((prev, curr) => 
+        ((curr.total_leads || 0) > (prev.total_leads || 0)) ? curr : prev, validData[0]);
     
     if (topPerformer && topPerformer.total_leads > 0) {
         insights.push({
             type: 'positive',
             icon: 'fa-trophy',
             title: 'Top Performing Ad',
-            message: `"${topPerformer.ad_name}" is generating ${topPerformer.total_leads} leads with a CPL of ₹${topPerformer.cost_per_lead.toFixed(2)}. Consider increasing budget by 20-30% to scale this success.`
+            message: `"${topPerformer.ad_name}" is generating ${topPerformer.total_leads} leads with a CPL of ₹${(topPerformer.cost_per_lead || 0).toFixed(2)}. Consider increasing budget by 20-30% to scale this success.`
         });
     }
 
     // Worst performer
-    const worstPerformer = data
-        .filter(ad => ad.total_leads > 0 && ad.cost_per_lead > 0)
+    const worstPerformer = validData
+        .filter(ad => ad != null && (ad.total_leads || 0) > 0 && (ad.cost_per_lead || 0) > 0)
         .reduce((prev, curr) => {
+            if (!prev) return curr;
             const prevCPL = prev.cost_per_lead || Infinity;
             const currCPL = curr.cost_per_lead || Infinity;
             return currCPL > prevCPL ? curr : prev;
         }, null);
 
-    if (worstPerformer && worstPerformer.cost_per_lead > metrics.avgCPL * 1.5) {
+    if (worstPerformer && worstPerformer.cost_per_lead && worstPerformer.cost_per_lead > metrics.avgCPL * 1.5) {
         insights.push({
             type: 'negative',
             icon: 'fa-exclamation-triangle',
             title: 'Optimization Opportunity',
-            message: `"${worstPerformer.ad_name}" has a CPL of ₹${worstPerformer.cost_per_lead.toFixed(2)} (${((worstPerformer.cost_per_lead / metrics.avgCPL - 1) * 100).toFixed(0)}% above average). Review creative, audience targeting, or consider pausing.`
+            message: `"${worstPerformer.ad_name}" has a CPL of ₹${(worstPerformer.cost_per_lead || 0).toFixed(2)} (${((worstPerformer.cost_per_lead / metrics.avgCPL - 1) * 100).toFixed(0)}% above average). Review creative, audience targeting, or consider pausing.`
         });
     }
 
     // High spend, low leads
-    const highSpendLowLeads = data
-        .filter(ad => ad.total_spend > metrics.totalSpend / data.length && ad.total_leads === 0)
-        .sort((a, b) => b.total_spend - a.total_spend)[0];
+    const highSpendLowLeads = validData
+        .filter(ad => ad != null && (ad.total_spend || 0) > metrics.totalSpend / validData.length && (ad.total_leads || 0) === 0)
+        .sort((a, b) => (b.total_spend || 0) - (a.total_spend || 0))[0];
 
     if (highSpendLowLeads) {
         insights.push({
             type: 'warning',
             icon: 'fa-dollar-sign',
             title: 'Budget Alert',
-            message: `"${highSpendLowLeads.ad_name}" has spent ₹${highSpendLowLeads.total_spend.toFixed(2)} with 0 leads. Immediate review recommended.`
+            message: `"${highSpendLowLeads.ad_name}" has spent ₹${(highSpendLowLeads.total_spend || 0).toFixed(2)} with 0 leads. Immediate review recommended.`
         });
     }
 
     // Best ROI
-    const bestROI = data
-        .filter(ad => ad.roas > 0)
-        .reduce((prev, curr) => (curr.roas > prev.roas) ? curr : prev, null);
+    const bestROI = validData
+        .filter(ad => ad != null && (ad.roas || 0) > 0)
+        .reduce((prev, curr) => {
+            if (!prev) return curr;
+            return ((curr.roas || 0) > (prev.roas || 0)) ? curr : prev;
+        }, null);
 
     if (bestROI && bestROI.roas > 2) {
         insights.push({
             type: 'info',
             icon: 'fa-chart-line',
             title: 'High ROI Campaign',
-            message: `"${bestROI.ad_name}" shows excellent ROI at ${bestROI.roas.toFixed(2)}x. This indicates strong conversion quality. Consider replicating this strategy.`
+            message: `"${bestROI.ad_name}" shows excellent ROI at ${(bestROI.roas || 0).toFixed(2)}x. This indicates strong conversion quality. Consider replicating this strategy.`
         });
     }
 
@@ -983,11 +1053,11 @@ function showDetails(adId) {
             </div>
             <div style="padding: 16px; background: var(--bg-body); border-radius: 10px;">
                 <small style="color: var(--text-light); font-weight: 600; text-transform: uppercase;">Cost Per Lead</small>
-                <h3 style="margin-top: 8px; color: var(--primary);">₹${ad.cost_per_lead.toFixed(2)}</h3>
+                <h3 style="margin-top: 8px; color: var(--primary);">₹${(ad.cost_per_lead || 0).toFixed(2)}</h3>
             </div>
             <div style="padding: 16px; background: var(--bg-body); border-radius: 10px;">
                 <small style="color: var(--text-light); font-weight: 600; text-transform: uppercase;">ROAS</small>
-                <h3 style="margin-top: 8px; color: var(--accent);">${ad.roas.toFixed(2)}x</h3>
+                <h3 style="margin-top: 8px; color: var(--accent);">${(ad.roas || 0).toFixed(2)}x</h3>
             </div>
             <div style="padding: 16px; background: var(--bg-body); border-radius: 10px;">
                 <small style="color: var(--text-light); font-weight: 600; text-transform: uppercase;">Impressions</small>
