@@ -39,6 +39,41 @@ function setupEventListeners() {
     });
 }
 
+async function fetchCampaignData() {
+    try {
+        console.log('Fetching campaign data from backend...');
+
+        const response = await fetch('/api/campaigns');
+
+        if (!response.ok) {
+            throw new Error(`Campaign API error: ${response.status}`);
+        }
+
+        const json = await response.json();
+
+        // Normalize n8n-style responses
+        rawCampaignData = Array.isArray(json)
+            ? json.map(item => item.json ?? item)
+            : [];
+
+        filteredCampaignData = [...rawCampaignData];
+
+        console.log('Campaign data loaded:', rawCampaignData.length);
+        console.log('Sample campaign:', rawCampaignData[0]);
+
+        // If user is on Campaign page → render immediately
+        if (currentPage === 'campaigns') {
+            updateDashboard(filteredData);
+        }
+
+    } catch (error) {
+        console.error('Failed to fetch campaign data:', error);
+        rawCampaignData = [];
+        filteredCampaignData = [];
+    }
+}
+
+
 // ==========================================
 // PAGE NAVIGATION
 // ==========================================
