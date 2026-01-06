@@ -191,6 +191,10 @@ body {
     scroll-behavior: smooth;
 }
 
+.page-content {
+    width: 100%;
+}
+
 /* Header */
 .top-bar { 
     display: flex; 
