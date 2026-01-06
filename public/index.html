@@ -29,11 +29,9 @@
         </div>
 
         <ul class="nav-links">
-            <li class="active"><a href="#overview"><i class="fas fa-chart-pie"></i> <span>Overview</span></a></li>
-            <li><a href="#campaigns"><i class="fas fa-bullseye"></i> <span>Campaigns</span></a></li>
-            <li><a href="#performance"><i class="fas fa-chart-line"></i> <span>Performance</span></a></li>
-            <li><a href="#insights"><i class="fas fa-robot"></i> <span>AI Insights</span></a></li>
-            <li><a href="#settings"><i class="fas fa-cog"></i> <span>Settings</span></a></li>
+            <li class="active" data-page="overview"><a href="#" onclick="navigateTo('overview'); return false;"><i class="fas fa-chart-pie"></i> <span>Overview</span></a></li>
+            <li data-page="leads"><a href="#" onclick="navigateTo('leads'); return false;"><i class="fas fa-users"></i> <span>Leads</span></a></li>
+            <li data-page="campaigns"><a href="#" onclick="navigateTo('campaigns'); return false;"><i class="fas fa-bullseye"></i> <span>Campaigns</span></a></li>
         </ul>
 
         <div class="user-profile">
@@ -55,12 +53,14 @@
                 <p id="lastUpdated"><i class="fas fa-clock"></i> Syncing data...</p>
             </div>
             <div class="actions">
-                <select id="dateRange" class="date-selector" onchange="applyDateFilter()">
-                    <option value="all">All Time</option>
-                    <option value="7">Last 7 Days</option>
-                    <option value="30" selected>Last 30 Days</option>
-                    <option value="90">Last 90 Days</option>
-                </select>
+                <div class="date-selector">
+                    <select id="dateRange" onchange="applyDateFilter()">
+                        <option value="all">All Time</option>
+                        <option value="7">Last 7 Days</option>
+                        <option value="30" selected>Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                    </select>
+                </div>
                 <button class="btn-secondary" onclick="exportToCSV()" title="Export to CSV">
                     <i class="fas fa-download"></i> Export
                 </button>
@@ -76,8 +76,11 @@
             <p>Retrieving Intelligence from n8n...</p>
         </div>
 
-        <!-- Dashboard Grid -->
-        <div class="content-grid" id="dashboardContent">
+        <!-- Page Views -->
+        <div id="pageViews">
+            <!-- Overview Page -->
+            <div class="page-view active" id="page-overview">
+                <div class="content-grid" id="dashboardContent">
             
             <!-- 1. KPI Cards -->
             <section class="kpi-row">
@@ -272,6 +275,184 @@
                 </div>
             </section>
 
+                </div>
+            </div>
+
+            <!-- Leads Page -->
+            <div class="page-view" id="page-leads">
+                <div class="content-grid">
+                    <section class="kpi-row">
+                        <div class="kpi-card">
+                            <div class="icon-box green"><i class="fas fa-users"></i></div>
+                            <div class="kpi-info">
+                                <p>Total Leads Generated</p>
+                                <h3 id="leadsPageTotalLeads">0</h3>
+                                <small id="leadsPageLeadsChange" class="kpi-change">--</small>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="icon-box purple"><i class="fas fa-comment-dollar"></i></div>
+                            <div class="kpi-info">
+                                <p>Average Cost Per Lead</p>
+                                <h3 id="leadsPageCPL">₹0.00</h3>
+                                <small id="leadsPageCPLChange" class="kpi-change">--</small>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="icon-box orange"><i class="fas fa-percentage"></i></div>
+                            <div class="kpi-info">
+                                <p>Conversion Rate</p>
+                                <h3 id="leadsPageConvRate">0%</h3>
+                                <small id="leadsPageConvChange" class="kpi-change">--</small>
+                            </div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="icon-box blue"><i class="fas fa-hand-pointer"></i></div>
+                            <div class="kpi-info">
+                                <p>Leads from Clicks</p>
+                                <h3 id="leadsPageClicks">0</h3>
+                                <small class="kpi-change">--</small>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="table-row">
+                        <div class="card full-width">
+                            <div class="card-header space-between">
+                                <h3><i class="fas fa-table"></i> Leads Performance Details</h3>
+                                <div class="table-controls">
+                                    <div class="search-wrap">
+                                        <i class="fas fa-search"></i>
+                                        <input type="text" id="leadsTableSearch" placeholder="Search by ad, campaign..." onkeyup="filterLeadsTable()">
+                                    </div>
+                                    <select id="leadsStatusFilter" class="filter-select" onchange="filterLeadsTable()">
+                                        <option value="all">All Leads</option>
+                                        <option value="high">High Performance</option>
+                                        <option value="low">Low Performance</option>
+                                    </select>
+                                    <select id="leadsSortBy" class="filter-select" onchange="sortLeadsTable()">
+                                        <option value="leads">Sort by Leads</option>
+                                        <option value="cpl">Sort by CPL</option>
+                                        <option value="spend">Sort by Spend</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="table-info">
+                                <span id="leadsTableCount">Showing 0 leads</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="sortable" onclick="sortLeadsTable('ad_name')">Ad Name / Campaign <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortLeadsTable('leads')">Leads <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortLeadsTable('spend')">Spend <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortLeadsTable('cpl')">CPL <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortLeadsTable('clicks')">Clicks <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortLeadsTable('convRate')">Conv. Rate <i class="fas fa-sort"></i></th>
+                                            <th class="text-center">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="leadsTableBody">
+                                        <!-- Data Rows -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Campaigns Page -->
+            <div class="page-view" id="page-campaigns">
+                <div class="content-grid">
+                    <section class="campaign-comparison">
+                        <div class="card full-width">
+                            <div class="card-header space-between">
+                                <h3><i class="fas fa-balance-scale"></i> Campaign Performance Comparison</h3>
+                                <div class="filter-group">
+                                    <select id="campaignPageFilter" class="filter-select" onchange="filterCampaignPage()">
+                                        <option value="all">All Campaigns</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="campaign-grid" id="campaignPageGrid">
+                                <!-- JS Injected -->
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="charts-row">
+                        <div class="card chart-medium">
+                            <div class="card-header">
+                                <h3><i class="fas fa-trophy"></i> Top Campaigns by ROI</h3>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="campaignPageROIChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="card chart-medium">
+                            <div class="card-header">
+                                <h3><i class="fas fa-chart-pie"></i> Campaign Spend Distribution</h3>
+                            </div>
+                            <div class="chart-wrapper doughnut-wrapper">
+                                <canvas id="campaignPagePieChart"></canvas>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="charts-row">
+                        <div class="card chart-large">
+                            <div class="card-header">
+                                <h3><i class="fas fa-chart-line"></i> Performance Trend by Campaign</h3>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="campaignPagePerformanceChart"></canvas>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="table-row">
+                        <div class="card full-width">
+                            <div class="card-header space-between">
+                                <h3><i class="fas fa-table"></i> Campaign Performance Details</h3>
+                                <div class="table-controls">
+                                    <div class="search-wrap">
+                                        <i class="fas fa-search"></i>
+                                        <input type="text" id="campaignTableSearch" placeholder="Search campaigns..." onkeyup="filterCampaignTable()">
+                                    </div>
+                                    <select id="campaignTableSortBy" class="filter-select" onchange="sortCampaignTable()">
+                                        <option value="spend">Sort by Spend</option>
+                                        <option value="leads">Sort by Leads</option>
+                                        <option value="roi">Sort by ROI</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="table-info">
+                                <span id="campaignTableCount">Showing 0 campaigns</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="sortable" onclick="sortCampaignTable('campaign_name')">Campaign Name <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortCampaignTable('spend')">Total Spend <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortCampaignTable('leads')">Total Leads <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortCampaignTable('cpl')">Avg CPL <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortCampaignTable('roas')">Avg ROAS <i class="fas fa-sort"></i></th>
+                                            <th class="text-right sortable" onclick="sortCampaignTable('ads')">Active Ads <i class="fas fa-sort"></i></th>
+                                            <th class="text-center">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="campaignTableBody">
+                                        <!-- Data Rows -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
         </div>
     </main>
 
